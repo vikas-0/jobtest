@@ -70,3 +70,7 @@ gem "async-job-processor-redis", "~> 0.1.0"
 
 # For process monitoring (CPU and memory usage)
 gem "sys-proctable", "~> 1.3"
+
+gem "get_process_mem", "~> 1.0"
+
+gem "redis", "~> 5.4"

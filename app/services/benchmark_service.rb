@@ -6,6 +6,24 @@ class BenchmarkService
   TEST_RUNS = 3
 
   def self.run_benchmarks
+    # Reset resource metrics before starting benchmarks
+    ResourceMetricsService.reset_metrics
+
+    batch_sizes = BATCH_SIZES
+    results = {}
+
+    batch_sizes.each do |batch_size|
+      puts "Running benchmark with #{batch_size} documents..."
+      results[batch_size] = run_benchmark_for_batch_size(batch_size)
+    end
+
+    print_results(results)
+
+    # Print resource usage metrics
+    ResourceMetricsService.report_metrics
+  end
+
+  def self.run_benchmark_for_batch_size(batch_size)
     results = {
       solid_queue: {},
       async_job: {}
@@ -14,21 +32,14 @@ class BenchmarkService
     # Create index if it doesn't exist
     OpensearchIndexCreator.create_index
 
-    BATCH_SIZES.each do |batch_size|
-      puts "Running benchmark with #{batch_size} documents..."
+    # Generate test data once for this batch size
+    documents = generate_test_data(batch_size)
 
-      # Generate test data once for this batch size
-      documents = generate_test_data(batch_size)
+    # Test SolidQueue (JobTest1Job)
+    results[:solid_queue] = benchmark_solid_queue(documents)
 
-      # Test SolidQueue (JobTest1Job)
-      results[:solid_queue][batch_size] = benchmark_solid_queue(documents)
-
-      # Test AsyncJob (JobTest2Job)
-      results[:async_job][batch_size] = benchmark_async_job(documents)
-    end
-
-    # Print results
-    print_results(results)
+    # Test AsyncJob (JobTest2Job)
+    results[:async_job] = benchmark_async_job(documents)
 
     results
   end
@@ -166,31 +177,45 @@ class BenchmarkService
   def self.print_results(results)
     puts "\n========== BENCHMARK RESULTS ==========\n"
 
-    BATCH_SIZES.each do |batch_size|
+    results.each do |batch_size, batch_results|
       puts "\n----- Batch Size: #{batch_size} documents -----"
 
-      sq_results = results[:solid_queue][batch_size]
-      async_results = results[:async_job][batch_size]
+      sq_results = batch_results[:solid_queue]
+      async_results = batch_results[:async_job]
 
-      puts "SolidQueue (JobTest1Job):"
-      puts "  Avg Enqueue Time: #{sq_results[:avg_enqueue_time_seconds].round(2)}s"
-      puts "  Avg Total Time: #{sq_results[:avg_total_time_seconds].round(2)}s"
-      puts "  Avg Throughput: #{sq_results[:avg_throughput].round(2)} docs/second"
-
-      puts "\nAsyncJob (JobTest2Job):"
-      puts "  Avg Enqueue Time: #{async_results[:avg_enqueue_time_seconds].round(2)}s"
-      puts "  Avg Total Time: #{async_results[:avg_total_time_seconds].round(2)}s"
-      puts "  Avg Throughput: #{async_results[:avg_throughput].round(2)} docs/second"
-
-      # Determine which is faster
-      if sq_results[:avg_total_time_seconds] < async_results[:avg_total_time_seconds]
-        diff = (async_results[:avg_total_time_seconds] / sq_results[:avg_total_time_seconds] - 1) * 100
-        puts "\nResult: SolidQueue was #{diff.round(1)}% faster for #{batch_size} documents"
-      elsif async_results[:avg_total_time_seconds] < sq_results[:avg_total_time_seconds]
-        diff = (sq_results[:avg_total_time_seconds] / async_results[:avg_total_time_seconds] - 1) * 100
-        puts "\nResult: AsyncJob was #{diff.round(1)}% faster for #{batch_size} documents"
+      if sq_results && sq_results[:avg_total_time_seconds]
+        puts "SolidQueue (JobTest1Job):"
+        puts "  Avg Enqueue Time: #{sq_results[:avg_enqueue_time_seconds].round(2)}s"
+        puts "  Avg Total Time: #{sq_results[:avg_total_time_seconds].round(2)}s"
+        puts "  Avg Throughput: #{sq_results[:avg_throughput].round(2)} docs/second"
       else
-        puts "\nResult: Both performed equally for #{batch_size} documents"
+        puts "SolidQueue (JobTest1Job): No results available"
+      end
+
+      if async_results && async_results[:avg_total_time_seconds]
+        puts "\nAsyncJob (JobTest2Job):"
+        puts "  Avg Enqueue Time: #{async_results[:avg_enqueue_time_seconds].round(2)}s"
+        puts "  Avg Total Time: #{async_results[:avg_total_time_seconds].round(2)}s"
+        puts "  Avg Throughput: #{async_results[:avg_throughput].round(2)} docs/second"
+      else
+        puts "\nAsyncJob (JobTest2Job): No results available"
+      end
+
+      # Compare results if both are available
+      if sq_results && async_results &&
+         sq_results[:avg_total_time_seconds] && async_results[:avg_total_time_seconds]
+
+        if sq_results[:avg_total_time_seconds] < async_results[:avg_total_time_seconds]
+          diff = (async_results[:avg_total_time_seconds] / sq_results[:avg_total_time_seconds] - 1) * 100
+          puts "\nResult: SolidQueue was #{diff.round(1)}% faster for #{batch_size} documents"
+        elsif async_results[:avg_total_time_seconds] < sq_results[:avg_total_time_seconds]
+          diff = (sq_results[:avg_total_time_seconds] / async_results[:avg_total_time_seconds] - 1) * 100
+          puts "\nResult: AsyncJob was #{diff.round(1)}% faster for #{batch_size} documents"
+        else
+          puts "\nResult: Both performed equally for #{batch_size} documents"
+        end
+      else
+        puts "\nResult: Cannot compare performance (incomplete results)"
       end
     end
 
