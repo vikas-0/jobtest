@@ -74,3 +74,9 @@ gem "sys-proctable", "~> 1.3"
 gem "get_process_mem", "~> 1.0"
 
 gem "redis", "~> 5.4"
+
+# gem "async-http", "~> 0.89.0"
+
+gem "http", "~> 5.3"
+
+gem "async-http", "~> 0.89.0"

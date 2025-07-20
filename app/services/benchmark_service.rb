@@ -70,6 +70,13 @@ class BenchmarkService
     results = []
 
     TEST_RUNS.times do |run|
+      # Reset the Redis-based job tracker for SolidQueue
+      RedisJobTracker.reset("SolidQueue")
+
+      # Set the expected count BEFORE enqueueing jobs
+      RedisJobTracker.set_total_jobs("SolidQueue", documents.size)
+      puts "Setting SolidQueue expected jobs to #{documents.size}"
+
       start_time = Time.now
 
       # Enqueue each document as a separate job
@@ -107,6 +114,13 @@ class BenchmarkService
     results = []
 
     TEST_RUNS.times do |run|
+      # Reset the Redis-based job tracker for AsyncJob
+      RedisJobTracker.reset("AsyncJob")
+
+      # Set the expected count BEFORE enqueueing jobs
+      RedisJobTracker.set_total_jobs("AsyncJob", documents.size)
+      puts "Setting AsyncJob expected jobs to #{documents.size}"
+
       start_time = Time.now
 
       # Enqueue each document as a separate job
@@ -145,18 +159,29 @@ class BenchmarkService
     interval = 2 # Check interval in seconds
     total_wait = 0
 
-    while total_wait < max_wait_time
-      # This is a simplified approach - in a real scenario, you would check the job queue
-      # For SolidQueue, you might check SolidQueue::Job.where(finished_at: nil).count
-      # For AsyncJob, you might check a Redis queue or other metrics
+    # The expected count is now set before enqueueing jobs
+    # Just log the expected count for debugging
+    total_jobs = RedisJobTracker.get_total_jobs(job_type)
+    puts "Waiting for #{job_type} jobs to complete. Expected: #{expected_count}, Tracker: #{total_jobs}"
 
-      puts "Waiting for #{job_type} jobs to complete... (#{total_wait}s elapsed)"
+    while total_wait < max_wait_time
+      # Check the Redis job tracker counter based on job type
+      completed_count = RedisJobTracker.get_completed_count(job_type)
+
+      puts "Waiting for #{job_type} jobs to complete... #{completed_count}/#{expected_count} (#{total_wait}s elapsed)"
+
+      # If all expected jobs are completed, we can break out of the loop
+      if completed_count >= expected_count
+        puts "All #{job_type} jobs completed successfully!"
+        break
+      end
+
       sleep interval
       total_wait += interval
 
-      # For demonstration purposes, we'll just wait a bit
-      # In a real implementation, you'd check if all jobs are done
-      if total_wait >= (expected_count * 0.01) + 5 # Simple heuristic
+      # Safety timeout - if we've waited too long, break out of the loop
+      if total_wait >= max_wait_time
+        puts "Timeout waiting for #{job_type} jobs to complete. Only #{completed_count}/#{expected_count} jobs completed."
         break
       end
     end

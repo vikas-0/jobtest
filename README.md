@@ -1,24 +1,73 @@
-# OpenSearch Job Benchmarking
+# OpenSearch Job Benchmarking with Async HTTP
 
-This project compares the performance of different job processing approaches for OpenSearch indexing operations in a Rails application. The primary goal is to determine which job processing system performs better for OpenSearch indexing tasks, particularly focusing on the comparison between thread-based (SolidQueue) and fiber-based (AsyncJob) approaches.
+This project compares the performance of different job processing approaches for OpenSearch indexing operations in a Rails application. The primary goal is to determine which job processing system performs better for OpenSearch indexing tasks, particularly focusing on the comparison between thread-based (SolidQueue) and fiber-based (AsyncJob) approaches with asynchronous HTTP calls.
 
 ## Project Overview
 
 The project benchmarks two different job processing systems:
 
-1. **SolidQueue** - A thread-based job processing system (using 3 threads)
-2. **AsyncJob** - A fiber-based job processing system
+1. **SolidQueue** - A thread-based job processing system (using 3 threads) with synchronous HTTP calls
+2. **AsyncJob** - A fiber-based job processing system with asynchronous HTTP calls
 
-The benchmarks focus on OpenSearch document indexing operations with varying batch sizes to determine which approach scales better.
+The benchmarks focus on OpenSearch document indexing operations with simulated high-latency network conditions (3-second delay) to determine which approach handles I/O-bound operations more efficiently.
+
+### Key Features
+
+- **Asynchronous HTTP Client**: Custom implementation using the `async-http` gem for non-blocking HTTP requests to OpenSearch
+- **Simulated Network Latency**: 3-second artificial delay to demonstrate the benefits of async processing
+- **Redis-based Job Tracking**: Cross-process tracking of job completion and resource usage
+- **Resource Metrics**: Memory and CPU usage monitoring for both approaches
 
 ## Implementation
 
 ### Job Types
 
-- **JobTest1Job** - Uses SolidQueue (thread-based)
-- **JobTest2Job** - Uses AsyncJob (fiber-based)
+- **JobTest1Job** - Uses SolidQueue (thread-based) with synchronous HTTP calls
+- **JobTest2Job** - Uses AsyncJob (fiber-based) with asynchronous HTTP calls
 
-Both job types perform the same OpenSearch indexing operations but use different job processing backends.
+Both job types perform the same OpenSearch indexing operations but use different job processing backends and HTTP client implementations.
+
+### OpenSearch Clients
+
+#### Standard OpenSearch Client (SolidQueue)
+
+The standard OpenSearch client uses the official OpenSearch Ruby client with a wrapper that adds a 3-second delay to simulate network latency:
+
+```ruby
+class DelayedOpenSearchClient
+  def initialize(client, delay_seconds = 3)
+    @client = client
+    @delay_seconds = delay_seconds
+  end
+  
+  def index(options = {})
+    # Add artificial delay to simulate network latency
+    sleep(@delay_seconds)
+    @client.index(options)
+  end
+end
+```
+
+#### Async OpenSearch Client (AsyncJob)
+
+The async OpenSearch client uses the `async-http` gem to make non-blocking HTTP requests:
+
+```ruby
+class AsyncOpenSearchClient
+  def index(index:, id: nil, body:)
+    # Return an Async task that will perform the request asynchronously
+    Async do |task|
+      # Add artificial delay to simulate high-latency operations
+      Async.sleep(3)
+      
+      # Make the request asynchronously
+      response = Async::HTTP::Internet.post(url, headers, json_body)
+      
+      # Process response...
+    end
+  end
+end
+```
 
 ### Benchmark Methodology
 
@@ -41,7 +90,17 @@ This monitoring happens directly within the jobs to provide accurate measurement
 
 ## Benchmark Results
 
-### Performance Metrics
+### Latest Performance Metrics with Async HTTP
+
+With the implementation of asynchronous HTTP calls and simulated high-latency operations (3-second delay), the performance difference between AsyncJob and SolidQueue became even more significant:
+
+| Metric | SolidQueue | AsyncJob | Difference |
+|--------|------------|----------|------------|
+| Avg Enqueue Time | 0.28s | 0.03s | AsyncJob 89.3% faster |
+| Avg Total Time | 13.33s | 5.06s | AsyncJob 163.4% faster |
+| Avg Throughput | 0.75 docs/s | 1.98 docs/s | AsyncJob 164.0% faster |
+
+### Previous Performance Metrics (Without Async HTTP)
 
 | Batch Size | Metric | SolidQueue | AsyncJob | Difference |
 |------------|--------|------------|----------|------------|
@@ -57,6 +116,22 @@ This monitoring happens directly within the jobs to provide accurate measurement
 
 ### Resource Usage Metrics
 
+#### Latest Resource Metrics (With Redis-based Tracking)
+
+**AsyncJob Resource Usage:**
+- Memory Usage:
+  - Average: 102.0 MB
+  - Maximum: 102.75 MB
+- CPU Usage: Data collection in progress
+
+**SolidQueue Resource Usage:**
+- Memory Usage:
+  - Average: 109.26 MB
+  - Maximum: 111.14 MB
+- CPU Usage: Data collection in progress
+
+#### Previous Resource Metrics
+
 **AsyncJob Resource Usage:**
 - Memory Usage:
   - Average: 90.44 MB
@@ -65,7 +140,7 @@ This monitoring happens directly within the jobs to provide accurate measurement
   - Total CPU time: 0.0703 seconds
 
 **SolidQueue Resource Usage:**
-- No data available (likely due to process isolation)
+- No data available (due to process isolation)
 
 ## Analysis
 
