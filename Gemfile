@@ -64,7 +64,7 @@ end
 
 gem "opensearch-ruby", "~> 3.4"
 
-gem "async-job-adapter-active_job", "~> 0.14.1"
+gem "async-job-adapter-active_job", "~> 0.17.0"
 
 gem "async-job-processor-redis", "~> 0.1.0"
 
