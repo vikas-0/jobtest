@@ -79,4 +79,4 @@ gem "redis", "~> 5.4"
 
 gem "http", "~> 5.3"
 
-gem "async-http", "~> 0.89.0"
+gem "async-http", "~> 0.90.1"
